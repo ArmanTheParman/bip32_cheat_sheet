@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+    <link href="prism.css" rel="stylesheet" />
+
+    <title>BIP32 Cheat Sheet</title>
+
+    <style>
+      .list-group-item {
+        font-size: 90%;
+      }
+      .code {
+        font-size: 70%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container mt-5">
+      <div class="row">
+        <h1>BIP32 Cheat Sheet</h1>
+      </div>
+
+      <div class="row mt-3">
+        <div class="col-12 jumbotron">
+          <p class="lead">
+          Implementation steps with sample code in Elixir for <a href="#">BIP32</a> HD Wallet standard.
+          </p> 
+        </div>
+      </div>
+
+      <div class="row mt-4">
+        <div class="card col-lg-6 col-md-12 col-sm-12">
+          <div class="card-body">
+            <div class="card-title font-weight-bold">
+              Mnemonic phrase
+            </div>
+            <div class="card-subtitle mb-2 text-muted">24 words</div>
+            <div class="card-text">
+              <ul class="list-group mt-4 mb-0">
+                <li class="list-group-item">Create random sequence of 256bits</li>
+                <li class="list-group-item">Taking the first 8bits and run them through SHA256</li>
+                <li class="list-group-item">Add checksum to the end of the random sequence (now 264bit)</li>
+                <li class="list-group-item">Split result into 11 bit sequences into 24 groups</li>
+                <li class="list-group-item">Map each 11 bit value to a word in the predefined dictionary</li>
+              </ul>
+              <pre class="code pb-0 mt-0">
+                <code class="language-elixir pb-0">
+def generate_phrase() do
+  SecureRandom.random_bytes(32)
+  |> entropy_hash()
+  |> extract_checksum()
+  |> append_checksum()
+  |> :binary.bin_to_list()
+  |> Enum.map(fn byte -> 
+      to_bitstring(byte, @pad_length_mnemonic) 
+    end)
+  |> Enum.join()
+  |> mnemonic()
+end
+
+defp entropy_hash(sequence) do 
+  :crypto.hash(:sha256, sequence)
+end
+
+defp extract_checksum(
+  << checksum :: size(8), _bits :: bitstring >> = entropy) 
+  do
+    {checksum, entropy}
+end
+
+defp append_checksum({checksum, entropy}) do 
+  entropy <> << checksum >>
+end
+
+def to_bitstring(byte, pad_length) do
+  byte
+  |> Integer.to_string(2)
+  |> String.pad_leading(pad_length, "0")
+end
+
+def mnemonic(entropy) do
+  Regex.scan(~r/.{11}/, entropy)
+  |> List.flatten()
+  |> Enum.map(fn binary ->
+    word_index(binary, words())
+  end)
+  |> Enum.join(" ")
+end
+                </code>
+              </pre>
+
+              <pre class="code pb-0 mt-0">
+                <code class="language-elixir">
+iex(1)> generate_phrase()
+"baby shadow city tower diamond magnet avocado champion crash evolve circle chair boring runway remain fantasy finger impose crumble profit excuse group twist purse"
+                </code>
+              </pre>
+
+            </div>
+          </div>
+        </div>
+
+        <div class="card col-lg-6 col-md-12 col-sm-12">
+          <div class="card-body">
+            <div class="card-title font-weight-bold">
+              Generate the Seed
+            </div>
+            <div class="card-subtitle mb-2 text-muted">512bits</div>
+            <div class="card-text">
+              <ul class="list-group mt-4 mb-0">
+                <li class="list-group-item">Create a salt. If no password is chosen, the salt will be comprised of the string "mnemonic"</li>
+                <li class="list-group-item">Create initial PBKDF2 round by passing the entropy as the key and the salt as the data.</li>
+                <li class="list-group-item">Repeat this 2048 times. The entropy parameter stays the same, while the data is the xor of the current and previous result</li>
+                <li class="list-group-item">Encode in hex</li>
+              </ul>
+              <pre class="code pb-0 mt-0">
+                <code class="language-elixir pb-0">
+def entropy_from_phrase(phrase) do
+  phrase
+  |> phrase_to_list()
+  |> word_indexes(words())
+  |> Enum.map(fn index -> 
+      to_bitstring(index, @pad_length_phrase) 
+    end)
+  |> Enum.join()
+  |> remove_checksum()
+  |> entropy()
+end
+
+def phrase_to_list(phrase) do
+  phrase
+  |> String.split()
+  |> Enum.map(&String.trim/1)
+end
+
+def word_indexes(phrase_list, words) do
+  phrase_list
+  |> Enum.map(fn phrase_word ->
+    words
+    |> Tuple.to_list
+    |> Enum.find_index(fn el -> el === phrase_word end)
+  end)
+end
+
+def remove_checksum(bitstring) do 
+  String.slice(bitstring, 0..255)
+end
+
+def entropy(bitstring) do
+  Regex.scan(~r/.{8}/, bitstring)
+  |> List.flatten
+  |> Enum.map(&String.to_integer(&1, 2))
+  |> :binary.list_to_bin()
+end
+
+def words do
+  "./assets/english.txt"
+  |> File.stream!
+  |> Stream.map(&String.trim/1)
+  |> Enum.to_list
+  |> List.to_tuple
+end
+                </code>
+              </pre>
+              <pre class="code pb-0 mt-0">
+                <code class="language-elixir">
+iex(1)> entropy_from_phrase("fade joy announce clever yellow special near expand bus jealous memory usual just daughter bring oppose tone bind cloud mosquito route warfare engage champion")
+<<81, 207, 16, 37, 21, 79, 241, 161, 228, 226, 129, 30, 238, 242, 43, 248, 23,
+  150, 111, 135, 12, 220, 228, 66, 200, 175, 200, 11, 201, 238, 18, 145>>
+                </code>
+              </pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+
+    </div>
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+  <script src="prism.js"></script>
+  </body>
+</html>
