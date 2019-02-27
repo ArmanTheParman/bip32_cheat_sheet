@@ -7,188 +7,353 @@
 
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
-    <link href="prism.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css?family=Cardo" rel="stylesheet">
 
     <title>BIP32 Cheat Sheet</title>
 
     <style>
+      body {
+        font-family: 'Cardo', serif;
+        background: #fffcf9;
+      }
       .list-group-item {
         font-size: 90%;
       }
       .code {
         font-size: 70%;
       }
+      .separator {
+        background-color: #d1ccdc;
+        border: 0;
+        height: 0.2em;
+      }
+      a, a:hover {
+        color: #f19953;
+      }
+      .box {
+        background: #fff;
+        border: 1px solid #d1ccdc;
+        padding: 2em;
+      }
+      .large_margin_top {
+        margin-top: 3em;
+      }
+      img {
+        border: 1px solid #d1ccdc;
+      }
     </style>
   </head>
   <body>
     <div class="container mt-5">
       <div class="row">
-        <h1>BIP32 Cheat Sheet</h1>
-      </div>
-
-      <div class="row mt-3">
-        <div class="col-12 jumbotron">
-          <p class="lead">
-          Implementation steps with sample code in Elixir for <a href="#">BIP32</a> HD Wallet standard.
-          </p> 
+        <div class="col-12">
+          <h1><strong>BIP32 Cheat Sheet</strong></h1>
+        <p class="lead mb-5">
+          Implementation steps with sample code in Elixir for <a href="https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki">BIP32</a> HD Wallet standard. 
+        </p>
+        <hr class="separator">
         </div>
       </div>
 
-      <div class="row mt-4">
-        <div class="card col-lg-6 col-md-12 col-sm-12">
-          <div class="card-body">
-            <div class="card-title font-weight-bold">
-              Mnemonic phrase
-            </div>
-            <div class="card-subtitle mb-2 text-muted">24 words</div>
-            <div class="card-text">
-              <ul class="list-group mt-4 mb-0">
-                <li class="list-group-item">Create random sequence of 256bits</li>
-                <li class="list-group-item">Taking the first 8bits and run them through SHA256</li>
-                <li class="list-group-item">Add checksum to the end of the random sequence (now 264bit)</li>
-                <li class="list-group-item">Split result into 11 bit sequences into 24 groups</li>
-                <li class="list-group-item">Map each 11 bit value to a word in the predefined dictionary</li>
-              </ul>
-              <pre class="code pb-0 mt-0">
-                <code class="language-elixir pb-0">
-def generate_phrase() do
-  SecureRandom.random_bytes(32)
-  |> entropy_hash()
-  |> extract_checksum()
-  |> append_checksum()
-  |> :binary.bin_to_list()
-  |> Enum.map(fn byte -> 
-      to_bitstring(byte, @pad_length_mnemonic) 
-    end)
-  |> Enum.join()
-  |> mnemonic()
-end
+      <div class="row mt-4 mb-5">
+        <div class="col-md-8 col-sm-12">
+          <h2>Mnemonic Phrase</h2>
+          <p class="lead mb-5">This section describes how to go from random entropy to 24 mnemonic words.</p>
 
-defp entropy_hash(sequence) do 
-  :crypto.hash(:sha256, sequence)
-end
+          <ol>
+            <li>
+              <strong>Random Entropy</strong>
+              <p>This is a 256bit number</p> 
+            </li>
+            <li>
+              <strong>Build Checksum</strong>
+              <p>This involves running the 256bit number through SHA256, extracting the first 8 bits and appending them at the end of the 256 bit sequence</p> 
+            </li>
+            <li>
+              <strong>Split into 11 bit sequence</strong>
+              <p>This next step splits the 264 bit sequence into 11 bit sequences (24 of them)</p> 
+            </li>
+            <li>
+              <strong>Return 24 word mnemonic</strong>
+              <p>Map each 11 bit value to a word in the predefined dictionary</p> 
+            </li>
+          </ol>
+        </div>
 
-defp extract_checksum(
-  << checksum :: size(8), _bits :: bitstring >> = entropy) 
-  do
-    {checksum, entropy}
-end
+        <div class="col-md-4 col-sm-12 mt-5">
+          <div class="box">
+            <p class="lead">The dictionary is common across multiple wallets so most of the mnemonic words are inter changeable.</p>
+            <ol>
+              <li>abandon</li>
+              <li>ability</li>
+              <li>able</li>
+              <li>about</li>
+              <li>...</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+      <hr>
+      <div class="row mt-4 mb-5">
+        <div class="col-md-6 col-sm-12 mt-5">
+          <img src="../graphics/mnemonic_to_seed.jpg" class="img-fluid" />
+        </div>
 
-defp append_checksum({checksum, entropy}) do 
-  entropy <> << checksum >>
-end
+        <div class="col-md-6 col-sm-12 large_margin_top">
+          <h2>Generate the seed</h2>
+          <p class="lead mb-5">Stretching the 256bit entropy from menmonic words into 512bit seed</p>
 
-def to_bitstring(byte, pad_length) do
-  byte
-  |> Integer.to_string(2)
-  |> String.pad_leading(pad_length, "0")
-end
+          <ol>
+            <li>
+              <strong>Salt</strong>
+              <p>Create a salt. If no password is chosen, the salt will be comprised of the string "mnemonic"</p> 
+            </li>
+            <li>
+              <strong>Key Stretching</strong>
+              <p>Create initial PBKDF2 round by passing the entropy as the key and the salt as the data.</p> 
+            </li>
+            <li>
+              <strong>Repeat 2048 times</strong>
+              <p>Repeat this 2048 times. The entropy parameter stays the same, while the data is the xor of the current and previous result</p> 
+            </li>
+            <li>
+              <strong>Encode in hexadecimal</strong>
+              <p>Generally the seed is exported as a hex string.</p> 
+            </li>
+          </ol>
+        </div>
+      </div>
+      <hr>
+      <div class="row mt-4 mb-5">
+        <div class="col-md-8 col-sm-12 large_margin_top">
+          <h2>Anatomy of an exteded key</h2>
+          <p class="lead mb-5">An extended key is a Base58Check encoded string that encodes a few pieces of information.</p>
 
-def mnemonic(entropy) do
-  Regex.scan(~r/.{11}/, entropy)
-  |> List.flatten()
-  |> Enum.map(fn binary ->
-    word_index(binary, words())
-  end)
-  |> Enum.join(" ")
-end
-                </code>
-              </pre>
+          <ol>
+            <li>
+              <strong>Version Number</strong>
+              <p>4 bytes that denote weather we're encoding a public or private key. The version number is what starts an extended by with xpub or xprv. The bytes in the version
+              number combined with the rest of the data produces the xpub/xprv in Base58 encoding.</p> 
+            </li>
+            <li>
+              <strong>Depth</strong>
+              <p>1 byte that denotes the depth.</p> 
+            </li>
+            <li>
+              <strong>Fingerprint</strong>
+              <p>4 bytes (the first 4 bytes of the Ripemd160 hash of the parent key)</p> 
+            </li>
+            <li>
+              <strong>Index</strong>
+              <p>4 bytes</p> 
+            </li>
+            <li>
+              <strong>Chain Code</strong>
+              <p>32 bytes</p> 
+            </li>
+            <li>
+              <strong>Key</strong>
+              <p class="mb-0">33 bytes - If private key it will be prepended with a zero byte</p>
+            </li>
+          </ol>
+        </div>
 
-              <pre class="code pb-0 mt-0">
-                <code class="language-elixir">
-iex(1)> generate_phrase()
-"baby shadow city tower diamond magnet avocado champion crash evolve circle chair boring runway remain fantasy finger impose crumble profit excuse group twist purse"
-                </code>
-              </pre>
+        <div class="col-md-4 col-sm-12 mt-5">
+          <div class="box">
+            <p class="lead">The derivation path includes information about the depth and index for a key.</p>
+            <p>m/44'/0'/0'</p>
+            <p>The <em>Depth</em> is how far from the m/ you are. m/0 would be depth 0, m/0/1 would be depth 1.</p>
+            <p>The <em>Index</em> is the number. m/2 would have an index of 2.<p> 
+            <p>If the index is hardened (') the index is actually 2_147_483_647 + index. m/44' would be index 2_147_483_691.</p>
+          </div>
+        </div>
+      </div>
 
-            </div>
+      <div class="row mt-4 mb-5">
+
+        <div class="col-md-4 col-sm-12 mt-5">
+          <div class="box">
+            <p class="lead">The derivation path is split into a list of numbers each representing one depth level.</p>
+            <p>At each subsequent step the previous key and chain code is used and the depth increased by 1.</p>
+          </div>
+          <div class="box mt-3">
+            <p class="lead">Elliptical Curve Cryptography</p>
+            <p>We are using a few operations on the Secp256k1 curve to help us compute keys in our derivations.</p>
+            <ul>
+              <li>Point multiplication</li>
+              <li>Point addition</li>
+              <li>Modulus the order of the curve</li>
+            </ul>
           </div>
         </div>
 
-        <div class="card col-lg-6 col-md-12 col-sm-12">
-          <div class="card-body">
-            <div class="card-title font-weight-bold">
-              Generate the Seed
-            </div>
-            <div class="card-subtitle mb-2 text-muted">512bits</div>
-            <div class="card-text">
-              <ul class="list-group mt-4 mb-0">
-                <li class="list-group-item">Create a salt. If no password is chosen, the salt will be comprised of the string "mnemonic"</li>
-                <li class="list-group-item">Create initial PBKDF2 round by passing the entropy as the key and the salt as the data.</li>
-                <li class="list-group-item">Repeat this 2048 times. The entropy parameter stays the same, while the data is the xor of the current and previous result</li>
-                <li class="list-group-item">Encode in hex</li>
-              </ul>
-              <pre class="code pb-0 mt-0">
-                <code class="language-elixir pb-0">
-def entropy_from_phrase(phrase) do
-  phrase
-  |> phrase_to_list()
-  |> word_indexes(words())
-  |> Enum.map(fn index -> 
-      to_bitstring(index, @pad_length_phrase) 
-    end)
-  |> Enum.join()
-  |> remove_checksum()
-  |> entropy()
-end
+        <div class="col-md-8 col-sm-12 large_margin_top">
+          <h2>Child Key Derivation (public, non-hardened)</h2>
+          <p class="lead mb-5">A non hardened child key derivation means that we will use the parent's public key to derive the child key. It also means that the index will be at most 2_147_483_647</p>
 
-def phrase_to_list(phrase) do
-  phrase
-  |> String.split()
-  |> Enum.map(&String.trim/1)
-end
+          <ol>
+            <li>
+              <strong>Split the derivation path into list of integers.</strong>
+              <p>This is a non-hardened path so we won't get any ' in the path (ie. m/0/0)</p> 
+            </li>
+            <li>
+              <strong>Decode parent extended key</strong>
+              <p>This will result in a key, chain code, depth, index and version number.</p> 
+            </li>
+            <li>
+              <strong>Calculate child fingerprint from parent key</strong>
+              <p>This is the first 4 bytes of the SHA256 -> RIPEMD160 hash functions.</p> 
+            </li>
+            <li>
+              <strong>Increase the depth and index</strong>
+              <p>Depth increases by 1 while index by the path number currently deriving.</p> 
+            </li>
+            <li>
+              <strong>Calculate PBKDF2 HMAC512 of the parent chain code & key + index</strong>
+              <p>The resulting 512bit number is the child key (first 256bits and the child chain code the rest 256bits)</p> 
+            </li>
+            <li>
+              <strong>Use resulting key to perform EC curve multiplication with G to compute child public key.</strong>
+              <p>This is the same point multiplication we use to derive a public key from a private key, except this time we use the parent public key to derive a child public key.</p> 
+            </li>
+            <li>
+              <strong>Use resulting key to perform EC curve multiplication with G to compute child public key.</strong>
+              <p>This is the same point multiplication we use to derive a public key from a private key, except this time we use the parent public key to derive a child public key.</p> 
+            </li>
+            <li class="mb-3">
+              <strong>De-compress the parent public key into the X and Y coordinates.</strong>
+            </li>
+            <li class="mb-3">
+              <strong>Perform EC point addition of the P(X,Y) and the child public key.</strong>
+              <p>This step is required to get the X and Y coordinates of the resulting child key.</p>
+            </li>
+            <li>
+              <strong>Check if the resulting X, Y coordinate fall within the curve's finite field.</strong>
+              <p>The resulting extended by is just the compressed version (just the X coordinate) of the (X,Y) point. We append 02 if the Y coordinate is even or 03 otherwise. </p>
+            </li>
+            <li class="mb-3">
+              <strong>Encode resulting data with Base58Check</strong>
+              <p>The version number used will be the public one. </p>
+            </li>
+          </ol>
+        </div>
+      </div>
 
-def word_indexes(phrase_list, words) do
-  phrase_list
-  |> Enum.map(fn phrase_word ->
-    words
-    |> Tuple.to_list
-    |> Enum.find_index(fn el -> el === phrase_word end)
-  end)
-end
+      <hr>
+      <div class="row mt-4 mb-5">
+        <div class="col-md-8 col-sm-12 large_margin_top">
+          <h2>Child Key Derivation (private, un-hardened)</h2>
+          <p class="lead mb-5">The private child key derivation is similar to the public one with a few exceptions.</p>
 
-def remove_checksum(bitstring) do 
-  String.slice(bitstring, 0..255)
-end
+          <ol>
+            <li>
+              <strong>Split the derivation path into list of integers.</strong>
+              <p>This is a non-hardened path so we won't get any ' in the path (ie. m/0/0)</p> 
+            </li>
+            <li>
+              <strong>Decode parent extended key</strong>
+              <p>This decoded key will have a 0 appended to it and we need to strip that.</p> 
+            </li>
+            <li>
+              <strong>Calculate the public key using EC multiplcation.</strong>
+              <p>This is the first 4 bytes of the SHA256 -> RIPEMD160 hash functions.</p> 
+            </li>
+            <li>
+              <strong>Compress the public key obtained in the previous step.</strong>
+              <p>Depth increases by 1 while index by the path number currently deriving.</p> 
+            </li>
+            <li>
+              <strong>Use the compressed public key from previous step to calculate the fingerprint.</strong>
+              <p>The resulting 512bit number is the child key (first 256bits and the child chain code the rest 256bits)</p> 
+            </li>
+            <li>
+              <strong>Calculate depth.</strong>
+              <p>This is the same point multiplication we use to derive a public key from a private key, except this time we use the parent public key to derive a child public key.</p> 
+            </li>
+            <li>
+              <strong>Use PBKDF2 HMAC512 to calculate child key and chaincode.</strong>
+              <p>This is the same point multiplication we use to derive a public key from a private key, except this time we use the parent public key to derive a child public key.</p> 
+            </li>
+            <li class="mb-3">
+              <strong>Run the resulting key through mod curve order to ensure the point falls within the finite field.</strong>
+            </li>
+            <li class="mb-3">
+              <strong>Encode resulting data with Base58Check</strong>
+              <p>We're using the private version number here.</p>
+            </li>
+          </ol>
+        </div>
 
-def entropy(bitstring) do
-  Regex.scan(~r/.{8}/, bitstring)
-  |> List.flatten
-  |> Enum.map(&String.to_integer(&1, 2))
-  |> :binary.list_to_bin()
-end
+        <div class="col-md-4 col-sm-12 mt-5">
+          <div class="box">
+            <p class="lead">The resulting key will start with xprv</p>
+          </div>
+        </div>
+      </div>
+      <hr>
+      <div class="row mt-4 mb-5">
 
-def words do
-  "./assets/english.txt"
-  |> File.stream!
-  |> Stream.map(&String.trim/1)
-  |> Enum.to_list
-  |> List.to_tuple
-end
-                </code>
-              </pre>
-              <pre class="code pb-0 mt-0">
-                <code class="language-elixir">
-iex(1)> entropy_from_phrase("fade joy announce clever yellow special near expand bus jealous memory usual just daughter bring oppose tone bind cloud mosquito route warfare engage champion")
-<<81, 207, 16, 37, 21, 79, 241, 161, 228, 226, 129, 30, 238, 242, 43, 248, 23,
-  150, 111, 135, 12, 220, 228, 66, 200, 175, 200, 11, 201, 238, 18, 145>>
-                </code>
-              </pre>
-            </div>
+        <div class="col-md-4 col-sm-12 mt-5">
+          <div class="box">
+            <p class="lead">Why hardened and non-hardened paths?</p>
+            <p>There are use cases for each as well as pros and cons.</p>
+            <ul>
+              <li>
+                <strong>Non-hardened</strong>
+                <p>Non-hardened derivation is what allows us to generate addresses from a Master Public Key on a live server.</p>
+                <p>The danger with this method is that if one child private key and the Master Public Key is leaked, an attacker can calculate the parent private key (this compromises the whole HD wallet).</p>
+              </li>
+              <li>
+                <strong>Hardened</strong>
+                <p>Hardened key derivation is useful when you want to share a hierarchy of private keys and keep them isolated.</p>
+                <p>You cannot generate child addresses on a hardened path without the private key.</p>
+              </li>
+            </ul>
           </div>
         </div>
 
+        <div class="col-md-8 col-sm-12 large_margin_top">
+          <h2>Child Key Derivation (hardened)</h2>
+          <p class="lead mb-5">A hardened derivation offsets the index of each path integer by 2^31. All the previous steps apply except that for both private and public derivation the resulting public or private key is calculated using the parent private key. This means that you can't derive a downstream path for a hardened path.</p>
+
+          <ol>
+            <li>
+              <strong>Use resulting key to perform EC curve multiplication with G to compute child public or private key.</strong>
+              <p>We're using the parent private key to perform this step as stated above. This means that if we have an extended public key and we want to derive a path like m/0' we won't be able to because we don't have access to the private key which is required in this step.</p> 
+            </li>
+          </ol>
+        </div>
       </div>
 
+      <hr>
+      <div class="row mt-4 mb-5">
+        <div class="col-md-8 col-sm-12 large_margin_top">
+          <h2>Addresses</h2>
+          <p class="lead mb-5">Once we have a way to generate a tree of public keys, getting a blockchain address is only a matter of hashing or encoding it the right way.</p>
+
+          <ul>
+            <li>
+              <strong>Bitcoin</strong>
+              <p>A bitcoin pay-to-hash address is a SHA256 -> RIPEMD160 -> Base58Check of the compressed public key. </p> 
+            </li>
+            <li>
+              <strong>Ripple</strong>
+              <p>A ripple address is similarly a SHA256 -> RIPEMD160 -> Base58Check but with a different alphabet than Bitcoin. That's why addresses look different.</p> 
+            </li>
+            <li>
+              <strong>Ethereum</strong>
+              <p>Ethereum addresses start from the same precursor as Bitcoin and Ripple, except we use the un-compressed public key (concatenated X and Y), take the Keccak256 hash of that and keep the last 20 bytes.</p> 
+            </li>
+          </ul>
+        </div>
+
+        <div class="col-md-4 col-sm-12 mt-5">
+          <div class="box">
+            <p class="lead">These are just a few examples of the top 3 coins but this scheme can be extended to support most blockchains out there. <a href="https://github.com/satoshilabs/slips/blob/master/slip-0044.md">This is a list of the supported coins</a> for the BIP44 standard.</p>
+          </div>
+        </div>
+      </div>
 
     </div>
-
-    <!-- Optional JavaScript -->
-    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
-    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
-  <script src="prism.js"></script>
   </body>
 </html>
